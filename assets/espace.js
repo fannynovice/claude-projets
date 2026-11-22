@@ -275,10 +275,14 @@
     const possible = "serviceWorker" in navigator && "PushManager" in window && "Notification" in window && window.isSecureContext;
 
     if (!possible) {
+      bloc.hidden = false;
+      bouton.hidden = true;
       if (ios && !autonome) {
-        bloc.hidden = false;
-        bouton.hidden = true;
-        texte.textContent = "🔔 Pour recevoir des notifications sur iPhone : touche le bouton Partager, puis « Sur l'écran d'accueil ». Ouvre ensuite le Secret Santa depuis cette icône.";
+        texte.textContent = "🔔 Pour recevoir des notifications sur iPhone : ouvre ce lien dans Safari, touche le bouton Partager, puis « Sur l'écran d'accueil ». Ouvre ensuite le Secret Santa depuis cette nouvelle icône : le bouton « Activer » apparaîtra ici.";
+      } else if (ios) {
+        texte.textContent = "🔔 Les notifications demandent iOS 16.4 ou plus récent. Mets ton iPhone à jour pour les activer.";
+      } else {
+        texte.textContent = "🔔 Ce navigateur ne permet pas les notifications. Ouvre ton lien dans Chrome, Edge ou Firefox (pas dans l'appli de messagerie, ni en navigation privée).";
       }
       return;
     }

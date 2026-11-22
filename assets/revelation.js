@@ -24,7 +24,32 @@
     return d.toLocaleDateString("fr-FR", { weekday: "long", day: "numeric", month: "long", year: "numeric" });
   }
 
-  const brut = window.location.hash.replace(/^#/, "");
+  // Ouvert depuis l'écran d'accueil sans le « #… » : on reprend le dernier lien de cet appareil,
+  // sinon on propose de le coller.
+  let brut = window.location.hash.replace(/^#/, "");
+  if (!brut) {
+    try { brut = localStorage.getItem("ss-dernier-lien") || ""; } catch (e) { brut = ""; }
+    if (brut) { history.replaceState(null, "", "#" + brut); }
+  }
+  if (!brut) {
+    contenu.innerHTML = "";
+    contenu.appendChild(el("p", "titre-fete", "Ton Secret Santa 🎄"));
+    contenu.appendChild(el("p", "aide", "Colle ici le lien personnel que tu as reçu :"));
+    const f = el("form", "ligne");
+    const champ = el("input");
+    champ.type = "text"; champ.placeholder = "https://…/voir.html#…"; champ.setAttribute("aria-label", "Ton lien personnel");
+    const ok = el("button", null, "Ouvrir"); ok.type = "submit";
+    f.appendChild(champ); f.appendChild(ok);
+    f.addEventListener("submit", function (e) {
+      e.preventDefault();
+      const v = champ.value.trim();
+      const s = v.indexOf("#") >= 0 ? v.slice(v.indexOf("#") + 1) : v;
+      if (s) window.location.hash = s;
+    });
+    contenu.appendChild(f);
+    SecretSanta.neige(20);
+    return;
+  }
   let donnees;
   try {
     // Lien court (secret seul, contenu chiffré sur le serveur) ou lien long (contenu codé dans le lien)
@@ -41,6 +66,7 @@
     return;
   }
 
+  try { localStorage.setItem("ss-dernier-lien", brut); } catch (e) { /* ignore */ }
   if (donnees.t) document.title = donnees.t + " – Secret Santa";
 
   contenu.innerHTML = "";
