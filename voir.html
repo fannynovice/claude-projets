@@ -12,6 +12,10 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Mountains+of+Christmas:wght@700&family=Nunito:wght@400;700;800&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="assets/style.css">
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="apple-touch-icon" href="assets/icone-192.png">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-title" content="Secret Santa">
 </head>
 <body>
   <main class="page">
@@ -27,6 +31,13 @@
     </section>
 
     <div id="espace" hidden>
+      <section class="carte notif" id="bloc-notif" hidden>
+        <div class="notif-ligne">
+          <p id="notif-texte">🔔 Sois prévenu·e des nouveaux messages et quand la liste de la personne que tu gâtes change.</p>
+          <button type="button" id="notif-bouton" class="petit">Activer</button>
+        </div>
+        <p id="notif-etat" class="etat" role="status"></p>
+      </section>
       <nav class="onglets" role="tablist" aria-label="Espace personnel">
         <button type="button" role="tab" id="onglet-liste" aria-controls="panneau-liste" aria-selected="true">📝 Ma liste</button>
         <button type="button" role="tab" id="onglet-sienne" aria-controls="panneau-sienne" aria-selected="false">🎁 Sa liste</button>

@@ -255,5 +255,108 @@
     sonder();
     setInterval(sonder, 8000);
     document.addEventListener("visibilitychange", sonder);
+
+    initNotifications(d);
   };
+
+  /* ---------- Notifications push ---------- */
+  function cleVapid(b64) {
+    const s = b64.replace(/-/g, "+").replace(/_/g, "/") + "===".slice((b64.length + 3) % 4);
+    const bin = atob(s);
+    const out = new Uint8Array(bin.length);
+    for (let i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i);
+    return out;
+  }
+
+  async function initNotifications(d) {
+    const bloc = $("bloc-notif"), bouton = $("notif-bouton"), texte = $("notif-texte"), etat = $("notif-etat");
+    const ios = /iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
+    const autonome = window.matchMedia("(display-mode: standalone)").matches || navigator.standalone === true;
+    const possible = "serviceWorker" in navigator && "PushManager" in window && "Notification" in window && window.isSecureContext;
+
+    if (!possible) {
+      if (ios && !autonome) {
+        bloc.hidden = false;
+        bouton.hidden = true;
+        texte.textContent = "🔔 Pour recevoir des notifications sur iPhone : touche le bouton Partager, puis « Sur l'écran d'accueil ». Ouvre ensuite le Secret Santa depuis cette icône.";
+      }
+      return;
+    }
+    bloc.hidden = false;
+
+    const cle = (await Api.sha256Hex("notif:" + d.w)).slice(0, 16);
+    const memoire = "ss-notif-" + cle;
+
+    async function retenirLien() {
+      try {
+        const cache = await caches.open("ss-liens");
+        await cache.put("lien-" + cle, new Response(window.location.href));
+      } catch (e) { /* ignore */ }
+    }
+
+    async function abonnementActuel() {
+      const reg = await navigator.serviceWorker.getRegistration();
+      return reg ? reg.pushManager.getSubscription() : null;
+    }
+
+    function afficher(actif) {
+      bouton.textContent = actif ? "Désactiver" : "Activer";
+      bouton.classList.toggle("discret", actif);
+      texte.textContent = actif
+        ? "🔔 Notifications activées sur cet appareil."
+        : "🔔 Sois prévenu·e des nouveaux messages et quand la liste de la personne que tu gâtes change.";
+    }
+
+    let actif = memo(memoire) === "1" && Notification.permission === "granted" && !!(await abonnementActuel());
+    afficher(actif);
+    if (actif) retenirLien();
+    if (Notification.permission === "denied") {
+      etat.textContent = "Les notifications sont bloquées pour ce site dans les réglages de ton navigateur.";
+    }
+
+    bouton.addEventListener("click", async function () {
+      bouton.disabled = true;
+      etat.textContent = "";
+      try {
+        if (actif) {
+          const sub = await abonnementActuel();
+          if (sub) await Api.desabonnerPush(sub.endpoint, cle);
+          try { localStorage.removeItem(memoire); } catch (e) { /* ignore */ }
+          actif = false;
+          afficher(false);
+          return;
+        }
+        const permission = await Notification.requestPermission();
+        if (permission !== "granted") {
+          etat.textContent = "Notifications refusées. Tu peux les autoriser plus tard dans les réglages du navigateur.";
+          return;
+        }
+        await navigator.serviceWorker.register("sw.js");
+        const reg = await navigator.serviceWorker.ready;
+        const clePublique = await Api.clePush();
+        if (!clePublique) throw new Error("service de notifications pas encore prêt");
+        let sub = await reg.pushManager.getSubscription();
+        if (!sub) {
+          sub = await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: cleVapid(clePublique) });
+        }
+        const j = sub.toJSON();
+        await Api.abonnerPush({
+          p_endpoint: j.endpoint,
+          p_p256dh: j.keys.p256dh,
+          p_auth: j.keys.auth,
+          p_cle: cle,
+          p_canaux: [{ s: d.cd, r: "enfant" }, { s: d.cr, r: "pere" }],
+          p_listes: [d.l]
+        });
+        await retenirLien();
+        memo(memoire, "1");
+        actif = true;
+        afficher(true);
+      } catch (e) {
+        etat.textContent = "⚠️ Impossible d'activer les notifications : " + e.message;
+      } finally {
+        bouton.disabled = false;
+      }
+    });
+  }
 })();

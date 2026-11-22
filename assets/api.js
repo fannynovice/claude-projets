@@ -82,6 +82,9 @@
   global.SecretSantaApi = {
     actif: actif,
     preparerLien: preparerLien,
+    clePush: function () { return rpc("cle_push", {}); },
+    abonnerPush: function (p) { return rpc("abonner_push", p); },
+    desabonnerPush: function (endpoint, cle) { return rpc("desabonner_push", { p_endpoint: endpoint, p_cle: cle }); },
     ouvrirLien: ouvrirLien,
     creerLiens: function (liste) { return rpc("creer_liens", { p_liens: liste.map(function (l) { return { id: l.id, d: l.d }; }) }); },
     sha256Hex: sha256Hex,

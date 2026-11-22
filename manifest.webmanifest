@@ -1,0 +1,13 @@
+{
+  "name": "Secret Santa",
+  "short_name": "Secret Santa",
+  "description": "Tirage au sort, listes de souhaits et messages anonymes.",
+  "display": "standalone",
+  "background_color": "#0f3322",
+  "theme_color": "#0f3322",
+  "lang": "fr",
+  "icons": [
+    { "src": "assets/icone-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "assets/icone-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any maskable" }
+  ]
+}

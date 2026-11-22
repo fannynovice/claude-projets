@@ -147,7 +147,112 @@ grant execute on function public.creer_liens(jsonb) to anon;
 grant execute on function public.lire_lien(text) to anon;
 
 -- ---------------------------------------------------------------------
+-- Notifications push
+-- Un abonnement = un navigateur (endpoint) + un participant (cle opaque).
+-- sujets : ce que ce navigateur veut suivre, sous forme d'empreintes :
+--   'm:<empreinte canal>:<rôle de l'auteur>'  nouveaux messages de l'autre personne
+--   'l:<id liste>'                            liste de souhaits de son destinataire
+create extension if not exists pg_net with schema extensions;
+
+create table if not exists public.push_config (
+  id       int primary key default 1 check (id = 1),
+  publique text not null,
+  privee   jsonb not null
+);
+alter table public.push_config enable row level security;
+revoke all on public.push_config from anon, authenticated;
+
+create table if not exists public.abonnements (
+  endpoint text not null check (char_length(endpoint) <= 1000),
+  cle      text not null check (char_length(cle) = 16),
+  p256dh   text not null check (char_length(p256dh) <= 200),
+  auth     text not null check (char_length(auth) <= 100),
+  sujets   text[] not null,
+  cree     timestamptz not null default now(),
+  primary key (endpoint, cle)
+);
+create index if not exists abonnements_sujets on public.abonnements using gin (sujets);
+alter table public.abonnements enable row level security;
+revoke all on public.abonnements from anon, authenticated;
+
+alter table public.messages add column if not exists notifie boolean not null default false;
+alter table public.souhaits add column if not exists notifie_a timestamptz;
+
+create or replace function public.cle_push()
+returns text language sql security definer stable
+set search_path = public
+as $$ select publique from public.push_config where id = 1 $$;
+
+-- p_canaux : [{"s": "<secret du canal>", "r": "pere"|"enfant"}] (r = rôle de l'auteur à suivre)
+create or replace function public.abonner_push(p_endpoint text, p_p256dh text, p_auth text,
+                                               p_cle text, p_canaux jsonb, p_listes jsonb)
+returns void language plpgsql security definer
+set search_path = public, extensions
+as $$
+declare
+  v_sujets text[] := '{}';
+  e jsonb;
+begin
+  if p_endpoint !~ '^https://' then raise exception 'abonnement invalide'; end if;
+  if jsonb_typeof(p_canaux) <> 'array' or jsonb_array_length(p_canaux) > 4
+     or jsonb_typeof(p_listes) <> 'array' or jsonb_array_length(p_listes) > 4 then
+    raise exception 'sujets invalides';
+  end if;
+  for e in select * from jsonb_array_elements(p_canaux) loop
+    if char_length(e->>'s') < 20 or (e->>'r') not in ('pere', 'enfant') then
+      raise exception 'canal invalide';
+    end if;
+    v_sujets := v_sujets || ('m:' || public._empreinte(e->>'s') || ':' || (e->>'r'));
+  end loop;
+  for e in select * from jsonb_array_elements(p_listes) loop
+    if (e #>> '{}') !~ '^[0-9a-f]{64}$' then raise exception 'liste invalide'; end if;
+    v_sujets := v_sujets || ('l:' || (e #>> '{}'));
+  end loop;
+  insert into public.abonnements (endpoint, cle, p256dh, auth, sujets)
+  values (p_endpoint, p_cle, p_p256dh, p_auth, v_sujets)
+  on conflict (endpoint, cle) do update
+    set p256dh = excluded.p256dh, auth = excluded.auth, sujets = excluded.sujets, cree = now();
+end $$;
+
+create or replace function public.desabonner_push(p_endpoint text, p_cle text)
+returns void language sql security definer
+set search_path = public
+as $$ delete from public.abonnements where endpoint = p_endpoint and cle = p_cle $$;
+
+revoke all on function public.cle_push() from public;
+revoke all on function public.abonner_push(text, text, text, text, jsonb, jsonb) from public;
+revoke all on function public.desabonner_push(text, text) from public;
+grant execute on function public.cle_push() to anon;
+grant execute on function public.abonner_push(text, text, text, text, jsonb, jsonb) to anon;
+grant execute on function public.desabonner_push(text, text) to anon;
+
+-- Déclencheurs : préviennent la fonction Edge « notifier », qui relit la base
+-- elle-même (elle ne fait confiance qu'à l'identifiant reçu).
+create or replace function public._notifier()
+returns trigger language plpgsql security definer
+set search_path = public, extensions
+as $$
+begin
+  perform net.http_post(
+    url := 'https://aptaufqxljzeufngccpp.supabase.co/functions/v1/notifier',
+    body := jsonb_build_object('type', TG_ARGV[0], 'id', new.id),
+    -- La clé « publishable » (publique) est exigée par la passerelle des fonctions Edge.
+    headers := '{"Content-Type": "application/json", "apikey": "sb_publishable_UB7HCL8CrV3WmCtfaToKBw_M5lAikan"}'::jsonb
+  );
+  return new;
+end $$;
+
+drop trigger if exists messages_notifier on public.messages;
+create trigger messages_notifier after insert on public.messages
+  for each row execute function public._notifier('message');
+
+drop trigger if exists souhaits_notifier on public.souhaits;
+create trigger souhaits_notifier after insert or update of contenu on public.souhaits
+  for each row execute function public._notifier('liste');
+
+-- ---------------------------------------------------------------------
 -- Ménage après les fêtes (à lancer à la main quand vous voulez) :
 -- delete from public.messages where cree < now() - interval '90 days';
 -- delete from public.souhaits where maj  < now() - interval '90 days';
 -- delete from public.liens    where cree < now() - interval '90 days';
+-- delete from public.abonnements;

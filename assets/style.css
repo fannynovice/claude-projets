@@ -341,6 +341,12 @@ footer.pied a { color: var(--or); }
 .infos div { background: var(--creme); border: 1px solid var(--bord); border-radius: 10px; padding: 10px 12px; }
 .infos strong { display: block; font-size: .8rem; text-transform: uppercase; letter-spacing: .04em; color: var(--texte-doux); }
 
+/* Notifications */
+.carte.notif { border-top-color: var(--or); padding: 14px 16px; }
+.notif-ligne { display: flex; align-items: center; gap: 12px; }
+.notif-ligne p { margin: 0; flex: 1; font-size: .95rem; }
+.carte.notif .etat:empty { display: none; }
+
 /* Espace personnel */
 .onglets {
   display: grid;
