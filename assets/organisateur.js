@@ -154,7 +154,7 @@
 
   let liensCourants = [];
 
-  function lancerTirage() {
+  async function lancerTirage() {
     effacerMessage();
     const noms = etat.participants.slice();
     if (noms.length < 3) {
@@ -174,9 +174,26 @@
       j: $("date").value,
       m: $("mot").value.trim()
     };
+    // Jetons secrets pour les listes de souhaits et la messagerie.
+    // w[i] : jeton d'écriture de la liste de i ; c[i] : canal entre i (Père Noël) et son destinataire.
+    // Rien de tout cela n'est envoyé au serveur au moment du tirage.
+    const enLigne = typeof SecretSantaApi !== "undefined" && SecretSantaApi.actif();
+    let w = [], c = [], idListe = [], pere = [];
+    if (enLigne) {
+      w = noms.map(function () { return SecretSantaApi.jeton(); });
+      c = noms.map(function () { return SecretSantaApi.jeton(); });
+      idListe = await Promise.all(w.map(SecretSantaApi.sha256Hex));
+      resultat.forEach(function (j, i) { pere[j] = i; });
+    }
     liensCourants = noms.map(function (nom, i) {
-      const charge = { v: 1, d: nom, r: noms[resultat[i]] };
+      const charge = { v: enLigne ? 2 : 1, d: nom, r: noms[resultat[i]] };
       Object.keys(infos).forEach(function (k) { if (infos[k]) charge[k] = infos[k]; });
+      if (enLigne) {
+        charge.w = w[i];                  // écrire sa propre liste
+        charge.l = idListe[resultat[i]];  // lire la liste de son destinataire
+        charge.cd = c[i];                 // discuter avec son destinataire
+        charge.cr = c[pere[i]];           // discuter avec son Père Noël secret
+      }
       return { nom: nom, url: base + "#" + SecretSanta.encode(charge) };
     });
     rendreResultats();

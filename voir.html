@@ -26,13 +26,68 @@
       </div>
     </section>
 
+    <div id="espace" hidden>
+      <nav class="onglets" role="tablist" aria-label="Espace personnel">
+        <button type="button" role="tab" id="onglet-liste" aria-controls="panneau-liste" aria-selected="true">📝 Ma liste</button>
+        <button type="button" role="tab" id="onglet-sienne" aria-controls="panneau-sienne" aria-selected="false">🎁 Sa liste</button>
+        <button type="button" role="tab" id="onglet-messages" aria-controls="panneau-messages" aria-selected="false">💬 Messages <span class="pastille" id="pastille" hidden></span></button>
+      </nav>
+
+      <section class="carte verte panneau" id="panneau-liste" role="tabpanel" aria-labelledby="onglet-liste">
+        <h2>Ma liste de souhaits</h2>
+        <p class="aide">Ton Père Noël secret la verra (sans que tu saches qui il est). Ajoute des idées, avec un lien si tu veux.</p>
+        <form id="form-souhait" autocomplete="off">
+          <div class="grille">
+            <div class="plein">
+              <label for="souhait-texte">Idée de cadeau</label>
+              <input type="text" id="souhait-texte" maxlength="120" placeholder="Un bon roman policier" required>
+            </div>
+            <div class="plein">
+              <label for="souhait-lien">Lien (facultatif)</label>
+              <input type="text" id="souhait-lien" maxlength="500" inputmode="url" placeholder="https://…">
+            </div>
+          </div>
+          <button type="submit" style="margin-top:12px">Ajouter à ma liste</button>
+        </form>
+        <ul id="ma-liste" class="souhaits"></ul>
+        <p id="ma-liste-vide" class="vide">Ta liste est vide pour l'instant.</p>
+        <p id="ma-liste-etat" class="etat" role="status"></p>
+      </section>
+
+      <section class="carte panneau" id="panneau-sienne" role="tabpanel" aria-labelledby="onglet-sienne" hidden>
+        <h2 id="titre-sienne">Sa liste de souhaits</h2>
+        <p class="aide">Les idées de la personne que tu gâtes. Elle peut la modifier à tout moment.</p>
+        <ul id="sa-liste" class="souhaits"></ul>
+        <p id="sa-liste-vide" class="vide">Pas encore d'idée… Tu peux lui demander dans les messages !</p>
+        <button type="button" id="rafraichir-sienne" class="discret petit">🔄 Actualiser</button>
+      </section>
+
+      <section class="carte panneau" id="panneau-messages" role="tabpanel" aria-labelledby="onglet-messages" hidden>
+        <h2>Messages anonymes</h2>
+        <p class="aide">Tes messages à la personne que tu gâtes sont signés « Père Noël secret ». Ceux de ton propre Père Noël restent anonymes aussi.</p>
+        <div class="choix-canal" role="group" aria-label="Choisir la conversation">
+          <button type="button" id="canal-cd" aria-pressed="true"></button>
+          <button type="button" id="canal-cr" aria-pressed="false">🎅 Mon Père Noël secret</button>
+        </div>
+        <div id="fil" class="fil" aria-live="polite"></div>
+        <form id="form-message" class="ligne envoi" autocomplete="off">
+          <textarea id="message-texte" maxlength="1000" rows="2" placeholder="Écris ton message…" aria-label="Message"></textarea>
+          <button type="submit" aria-label="Envoyer">➤</button>
+        </form>
+        <p id="message-etat" class="etat" role="status"></p>
+      </section>
+    </div>
+
     <footer class="pied">
-      <p>Ce lien est personnel : ne le transmets à personne. 🤫</p>
+      <p>Ce lien est personnel : ne le transmets à personne. 🤫<br>Garde-le précieusement : c'est ta clé pour revenir.</p>
       <p><a href="./">Organiser mon propre Secret Santa</a></p>
     </footer>
   </main>
 
+  <script src="assets/config.js"></script>
   <script src="assets/commun.js"></script>
+  <script src="assets/api.js"></script>
+  <script src="assets/espace.js"></script>
   <script src="assets/revelation.js"></script>
 </body>
 </html>

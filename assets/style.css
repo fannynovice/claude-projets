@@ -341,6 +341,85 @@ footer.pied a { color: var(--or); }
 .infos div { background: var(--creme); border: 1px solid var(--bord); border-radius: 10px; padding: 10px 12px; }
 .infos strong { display: block; font-size: .8rem; text-transform: uppercase; letter-spacing: .04em; color: var(--texte-doux); }
 
+/* Espace personnel */
+.onglets {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 6px;
+  margin: 0 0 10px;
+}
+.onglets button {
+  background: rgba(255,255,255,.12);
+  color: var(--creme);
+  border: 2px solid rgba(255,255,255,.2);
+  padding: 8px 6px;
+  font-size: .9rem;
+  white-space: normal;
+  line-height: 1.2;
+}
+.onglets button:hover { background: rgba(255,255,255,.22); }
+.onglets button[aria-selected="true"] { background: var(--creme); color: var(--rouge-fonce); border-color: var(--creme); }
+
+.pastille {
+  background: var(--rouge); color: #fff; border-radius: 999px;
+  font-size: .72rem; min-width: 20px; height: 20px; padding: 0 6px;
+  display: inline-flex; align-items: center; justify-content: center;
+}
+
+.etat { min-height: 1.4em; margin: 10px 0 0; font-size: .9rem; color: var(--texte-doux); }
+
+.souhaits { list-style: none; padding: 0; margin: 16px 0 0; display: grid; gap: 8px; }
+.souhaits li {
+  display: flex; align-items: center; justify-content: space-between; gap: 10px;
+  background: var(--creme); border: 2px solid var(--bord); border-radius: 12px; padding: 10px 10px 10px 14px;
+}
+.souhait-corps { display: flex; flex-direction: column; min-width: 0; }
+.souhait-texte { font-weight: 700; overflow-wrap: anywhere; }
+.souhait-texte::before { content: "🎁 "; }
+.souhait-lien { color: var(--vert); font-size: .88rem; overflow-wrap: anywhere; }
+
+.choix-canal { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; margin-bottom: 10px; }
+.choix-canal button {
+  background: var(--creme); color: var(--texte); border: 2px solid var(--bord);
+  white-space: normal; line-height: 1.2; font-size: .92rem; position: relative;
+}
+.choix-canal button:hover { background: #f6ead6; }
+.choix-canal button[aria-pressed="true"] { background: var(--vert); color: #fff; border-color: var(--vert); }
+.choix-canal button[data-nonlus]:not([data-nonlus=""])::after {
+  content: attr(data-nonlus);
+  position: absolute; top: -8px; right: -6px;
+  background: var(--rouge); color: #fff; border-radius: 999px;
+  font-size: .72rem; min-width: 20px; height: 20px; padding: 0 6px;
+  display: inline-flex; align-items: center; justify-content: center;
+}
+
+.fil {
+  background: #f7f1e6;
+  border: 2px solid var(--bord);
+  border-radius: 12px;
+  padding: 12px;
+  height: min(52vh, 420px);
+  overflow-y: auto;
+  display: flex; flex-direction: column; gap: 8px;
+}
+.fil .vide { margin: auto; text-align: center; }
+.bulle {
+  max-width: 82%;
+  border-radius: 14px;
+  padding: 8px 12px;
+  box-shadow: 0 1px 2px rgba(0,0,0,.08);
+}
+.bulle.moi { align-self: flex-end; background: var(--vert); color: #fff; border-bottom-right-radius: 4px; }
+.bulle.autre { align-self: flex-start; background: #fff; border-bottom-left-radius: 4px; }
+.bulle .auteur { display: block; font-size: .75rem; font-weight: 800; opacity: .8; }
+.bulle .texte { margin: 2px 0; white-space: pre-wrap; overflow-wrap: anywhere; }
+.bulle .quand { display: block; font-size: .7rem; opacity: .7; text-align: right; }
+
+.envoi { margin-top: 10px; }
+.envoi textarea { min-height: 46px; height: 46px; resize: none; }
+.envoi button { min-width: 52px; font-size: 1.2rem; }
+.envoi button:disabled { opacity: .6; cursor: wait; }
+
 @media (prefers-reduced-motion: reduce) {
   .cadeau:not(.ouvert) { animation: none; }
   .destinataire { animation: none; }

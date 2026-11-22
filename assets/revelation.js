@@ -86,6 +86,7 @@
     setTimeout(function () {
       cadeau.hidden = true;
       zone.classList.add("visible");
+      if (window.SecretSantaEspace) window.SecretSantaEspace(donnees);
     }, 550);
   }
 
