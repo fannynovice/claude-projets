@@ -1,37 +1,15 @@
 // Fonction Edge « notifier » : envoie les notifications push.
-// Appelée par les déclencheurs SQL avec { type: "message" | "liste", id }.
-// Elle ne fait confiance qu'à l'identifiant : tout le reste est relu en base,
+// Appelée par les déclencheurs SQL avec { type: "message" | "liste", id },
+// ou par la page (bouton de test) avec { type: "test", endpoint, cle }.
+// Elle ne fait confiance qu'aux identifiants : tout le reste est relu en base,
 // et chaque événement ne notifie qu'une fois (messages) ou au plus toutes
 // les 10 minutes (listes de souhaits).
 // À déployer avec « Verify JWT » désactivé.
 import postgres from "npm:postgres@3.4.5";
-import * as webpush from "jsr:@negrel/webpush@0.5.0";
+import webpush from "npm:web-push@3.6.7";
 
 const sql = postgres(Deno.env.get("SUPABASE_DB_URL")!, { prepare: false, max: 2 });
 const CONTACT = "https://fannynovice.github.io/claude-projets/";
-
-let serveurPromis: Promise<webpush.ApplicationServer> | null = null;
-
-async function chargerServeur(): Promise<webpush.ApplicationServer> {
-  let [ligne] = await sql`select privee from public.push_config where id = 1`;
-  if (!ligne) {
-    // Première utilisation : on génère les clés VAPID, qui ne quittent jamais la base.
-    const cles = await webpush.generateVapidKeys({ extractable: true });
-    const exportees = await webpush.exportVapidKeys(cles);
-    const publique = await webpush.exportApplicationServerKey(cles);
-    await sql`insert into public.push_config (id, publique, privee)
-              values (1, ${publique}, ${sql.json(exportees)})
-              on conflict (id) do nothing`;
-    [ligne] = await sql`select privee from public.push_config where id = 1`;
-  }
-  const vapidKeys = await webpush.importVapidKeys(ligne.privee, { extractable: false });
-  return webpush.ApplicationServer.new({ contactInformation: CONTACT, vapidKeys });
-}
-
-function serveur() {
-  if (!serveurPromis) serveurPromis = chargerServeur().catch((e) => { serveurPromis = null; throw e; });
-  return serveurPromis;
-}
 
 const CORS = {
   "Access-Control-Allow-Origin": "*",
@@ -44,24 +22,50 @@ function json(o: unknown, status = 200) {
 
 type Abonne = { endpoint: string; cle: string; p256dh: string; auth: string };
 
+// Clés VAPID : générées une seule fois et conservées en base (jamais exposées,
+// sauf la clé publique via la fonction SQL cle_push()).
+let pret: Promise<void> | null = null;
+async function chargerCles() {
+  let [ligne] = await sql`select publique, privee from public.push_config where id = 1`;
+  if (!ligne) {
+    const k = webpush.generateVAPIDKeys();
+    await sql`insert into public.push_config (id, publique, privee)
+              values (1, ${k.publicKey}, ${sql.json({ prive: k.privateKey })})
+              on conflict (id) do nothing`;
+    [ligne] = await sql`select publique, privee from public.push_config where id = 1`;
+  }
+  // Format JWK (ancienne génération) ou chaîne base64url.
+  const prive: string = ligne.privee.prive ?? ligne.privee.privateKey?.d;
+  webpush.setVapidDetails(CONTACT, ligne.publique, prive);
+}
+function cles() {
+  if (!pret) pret = chargerCles().catch((e) => { pret = null; throw e; });
+  return pret;
+}
+
 async function pousser(a: Abonne, titre: string, corps: string, type: string) {
-  const app = await serveur();
-  await app.subscribe({ endpoint: a.endpoint, keys: { p256dh: a.p256dh, auth: a.auth } })
-    .pushTextMessage(JSON.stringify({ titre, corps, cle: a.cle, type }),
-      { ttl: 86400, urgency: webpush.Urgency.High });
+  await cles();
+  return webpush.sendNotification(
+    { endpoint: a.endpoint, keys: { p256dh: a.p256dh, auth: a.auth } },
+    JSON.stringify({ titre, corps, cle: a.cle, type }),
+    { TTL: 86400, urgency: "high" },
+  );
+}
+
+function statutErreur(e: unknown): number {
+  return (e as { statusCode?: number })?.statusCode ?? 0;
 }
 
 async function envoyer(sujet: string, titre: string, corps: string, type: string) {
   const abonnes = await sql<Abonne[]>`select endpoint, cle, p256dh, auth from public.abonnements
-                            where ${sujet} = any(sujets)`;
-  if (!abonnes.length) return 0;
+                                      where ${sujet} = any(sujets)`;
   let n = 0;
   await Promise.all(abonnes.map(async (a) => {
     try {
       await pousser(a, titre, corps, type);
       n++;
     } catch (e) {
-      const statut = e instanceof webpush.PushMessageError ? e.response.status : 0;
+      const statut = statutErreur(e);
       if (statut === 404 || statut === 410) {
         await sql`delete from public.abonnements where endpoint = ${a.endpoint}`;
       } else {
@@ -80,7 +84,7 @@ Deno.serve(async (req) => {
 
   try {
     if (corps.type === "init") {
-      await serveur();
+      await cles();
       return json({ ok: true });
     }
 
@@ -90,12 +94,11 @@ Deno.serve(async (req) => {
                                       where endpoint = ${corps.endpoint} and cle = ${corps.cle}`;
       if (!a) return json({ ok: false, erreur: "abonnement inconnu" }, 404);
       try {
-        await pousser(a, "🔔 Test Secret Santa", "Les notifications fonctionnent sur cet appareil !", "test");
-        return json({ ok: true });
+        const r = await pousser(a, "🔔 Test Secret Santa", "Les notifications fonctionnent sur cet appareil !", "test");
+        return json({ ok: true, statut: r.statusCode });
       } catch (e) {
-        const statut = e instanceof webpush.PushMessageError ? e.response.status : 0;
-        const detail = e instanceof webpush.PushMessageError ? await e.response.text().catch(() => "") : String(e);
-        return json({ ok: false, statut, detail: detail.slice(0, 300) }, 502);
+        const detail = String((e as { body?: string })?.body ?? e);
+        return json({ ok: false, statut: statutErreur(e), detail: detail.slice(0, 300) }, 502);
       }
     }
 
@@ -123,6 +126,6 @@ Deno.serve(async (req) => {
     return json({ erreur: "requête invalide" }, 400);
   } catch (e) {
     console.error(e);
-    return json({ erreur: "erreur" }, 500);
+    return json({ erreur: "erreur", detail: String(e).slice(0, 300) }, 500);
   }
 });
