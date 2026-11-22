@@ -1,0 +1,96 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Secret Santa – Organisateur</title>
+  <meta name="description" content="Organisez votre Secret Santa : saisissez les participants, les exclusions, faites le tirage et envoyez à chacun son lien privé.">
+  <meta name="theme-color" content="#0f3322">
+  <meta name="referrer" content="no-referrer">
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🎁</text></svg>">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Mountains+of+Christmas:wght@700&family=Nunito:wght@400;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="assets/style.css">
+</head>
+<body>
+  <main class="page">
+    <header class="entete">
+      <div class="logo" aria-hidden="true">🎅</div>
+      <h1>Secret Santa</h1>
+      <p>Tirage au sort secret, directement dans votre navigateur.</p>
+    </header>
+
+    <section class="carte verte" aria-labelledby="t-evenement">
+      <h2 id="t-evenement">L'événement</h2>
+      <p class="aide">Ces informations apparaîtront sur la page de chaque participant (facultatif).</p>
+      <div class="grille">
+        <div class="plein">
+          <label for="titre">Nom de l'événement</label>
+          <input type="text" id="titre" maxlength="80" placeholder="Noël en famille 2026">
+        </div>
+        <div>
+          <label for="budget">Budget</label>
+          <input type="text" id="budget" maxlength="30" placeholder="20 €">
+        </div>
+        <div>
+          <label for="date">Date de l'échange</label>
+          <input type="date" id="date">
+        </div>
+        <div class="plein">
+          <label for="mot">Petit mot pour les participants</label>
+          <textarea id="mot" maxlength="300" placeholder="Rendez-vous chez Mamie le 24 au soir !"></textarea>
+        </div>
+      </div>
+    </section>
+
+    <section class="carte" aria-labelledby="t-participants">
+      <h2 id="t-participants">Participants</h2>
+      <p class="aide">Ajoutez au moins 3 personnes. Astuce : vous pouvez coller plusieurs prénoms séparés par des virgules ou des retours à la ligne.</p>
+      <form id="form-participant" class="ligne" autocomplete="off">
+        <input type="text" id="nouveau" maxlength="40" placeholder="Prénom" aria-label="Prénom du participant">
+        <button type="submit">Ajouter</button>
+      </form>
+      <ul id="liste-participants" class="liste" aria-live="polite"></ul>
+      <p id="aucun-participant" class="vide">Aucun participant pour l'instant.</p>
+    </section>
+
+    <section class="carte verte" aria-labelledby="t-exclusions">
+      <h2 id="t-exclusions">Exclusions</h2>
+      <p class="aide">Empêchez certaines personnes de se tirer au sort (couples, colocataires, tirage de l'an dernier…).</p>
+      <form id="form-exclusion" autocomplete="off">
+        <div class="ligne-exclusion">
+          <select id="excl-de" aria-label="Personne qui offre"></select>
+          <span class="fleche">ne doit pas offrir à</span>
+          <select id="excl-a" aria-label="Personne qui reçoit"></select>
+        </div>
+        <label class="case"><input type="checkbox" id="excl-reciproque" checked> Dans les deux sens</label>
+        <button type="submit" class="discret">Ajouter l'exclusion</button>
+      </form>
+      <ul id="liste-exclusions" class="exclusions" aria-live="polite"></ul>
+      <p id="aucune-exclusion" class="vide">Aucune exclusion.</p>
+    </section>
+
+    <section class="carte" aria-labelledby="t-tirage">
+      <h2 id="t-tirage">Tirage au sort</h2>
+      <p class="aide">Le tirage se fait uniquement sur cet appareil. Rien n'est envoyé ni enregistré sur un serveur : chaque lien contient lui-même le nom du destinataire, sous forme codée.</p>
+      <button type="button" id="tirer" class="principal">🎲 Lancer le tirage</button>
+      <div id="message" role="status"></div>
+
+      <div id="bloc-resultats" hidden>
+        <p class="aide" style="margin-top:16px">Envoyez à chaque personne <strong>son</strong> lien. Vous-même ne voyez pas les résultats : n'ouvrez pas les liens des autres pour garder la surprise !</p>
+        <button type="button" id="tout-copier" class="discret petit">📋 Copier tous les liens</button>
+        <ul id="resultats" class="resultats"></ul>
+        <p class="avertissement">⚠️ Ces liens ne sont conservés nulle part. Envoyez-les avant de fermer la page. Si vous relancez le tirage, les anciens liens restent valables mais ne correspondent plus au nouveau tirage : n'envoyez que ceux d'un même tirage.</p>
+      </div>
+    </section>
+
+    <footer class="pied">
+      <p>Fait avec ❤️ et beaucoup de flocons. <button type="button" id="reinitialiser" class="discret petit" style="color:inherit;border-color:rgba(255,255,255,.35)">Tout effacer</button></p>
+    </footer>
+  </main>
+
+  <script src="assets/commun.js"></script>
+  <script src="assets/organisateur.js"></script>
+</body>
+</html>
