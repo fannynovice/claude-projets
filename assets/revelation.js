@@ -1,4 +1,4 @@
-(function () {
+(async function () {
   "use strict";
 
   const contenu = document.getElementById("contenu");
@@ -27,7 +27,13 @@
   const brut = window.location.hash.replace(/^#/, "");
   let donnees;
   try {
-    donnees = SecretSanta.decode(brut);
+    // Lien court (secret seul, contenu chiffré sur le serveur) ou lien long (contenu codé dans le lien)
+    if (brut.length <= 40) {
+      if (!window.SecretSantaApi || !SecretSantaApi.actif()) throw new Error("serveur non configuré");
+      donnees = await SecretSantaApi.ouvrirLien(brut);
+    } else {
+      donnees = SecretSanta.decode(brut);
+    }
     if (!donnees || typeof donnees.d !== "string" || typeof donnees.r !== "string") throw new Error("format");
   } catch (e) {
     erreur();

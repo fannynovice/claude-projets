@@ -113,6 +113,41 @@ grant execute on function public.envoyer_message(text, text, text) to anon;
 grant execute on function public.lire_messages(text, bigint) to anon;
 
 -- ---------------------------------------------------------------------
+-- Liens courts : le contenu du lien est chiffré (AES-GCM) dans le navigateur
+-- de l'organisateur. La clé ne quitte jamais le lien ; le serveur ne stocke
+-- qu'un identifiant dérivé et un bloc illisible.
+create table if not exists public.liens (
+  id      text primary key check (char_length(id) = 32),
+  donnees text not null check (char_length(donnees) <= 4000),
+  cree    timestamptz not null default now()
+);
+alter table public.liens enable row level security;
+revoke all on public.liens from anon, authenticated;
+
+create or replace function public.creer_liens(p_liens jsonb)
+returns void language plpgsql security definer
+set search_path = public
+as $$
+begin
+  if jsonb_typeof(p_liens) <> 'array' or jsonb_array_length(p_liens) > 100 then
+    raise exception 'liste de liens invalide';
+  end if;
+  insert into public.liens (id, donnees)
+  select e->>'id', e->>'d' from jsonb_array_elements(p_liens) e;
+end $$;
+
+create or replace function public.lire_lien(p_id text)
+returns text language sql security definer stable
+set search_path = public
+as $$ select donnees from public.liens where id = p_id $$;
+
+revoke all on function public.creer_liens(jsonb) from public;
+revoke all on function public.lire_lien(text) from public;
+grant execute on function public.creer_liens(jsonb) to anon;
+grant execute on function public.lire_lien(text) to anon;
+
+-- ---------------------------------------------------------------------
 -- Ménage après les fêtes (à lancer à la main quand vous voulez) :
 -- delete from public.messages where cree < now() - interval '90 days';
 -- delete from public.souhaits where maj  < now() - interval '90 days';
+-- delete from public.liens    where cree < now() - interval '90 days';

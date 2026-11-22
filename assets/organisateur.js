@@ -185,7 +185,7 @@
       idListe = await Promise.all(w.map(SecretSantaApi.sha256Hex));
       resultat.forEach(function (j, i) { pere[j] = i; });
     }
-    liensCourants = noms.map(function (nom, i) {
+    const charges = noms.map(function (nom, i) {
       const charge = { v: enLigne ? 2 : 1, d: nom, r: noms[resultat[i]] };
       Object.keys(infos).forEach(function (k) { if (infos[k]) charge[k] = infos[k]; });
       if (enLigne) {
@@ -194,10 +194,33 @@
         charge.cd = c[i];                 // discuter avec son destinataire
         charge.cr = c[pere[i]];           // discuter avec son Père Noël secret
       }
-      return { nom: nom, url: base + "#" + SecretSanta.encode(charge) };
+      return charge;
     });
+
+    let avertissement = "";
+    liensCourants = null;
+    const bouton = $("tirer");
+    bouton.disabled = true;
+    try {
+      if (enLigne) {
+        // Liens courts : contenu chiffré déposé sur le serveur, clé uniquement dans le lien.
+        try {
+          const prepares = await Promise.all(charges.map(SecretSantaApi.preparerLien));
+          await SecretSantaApi.creerLiens(prepares);
+          liensCourants = noms.map(function (nom, i) { return { nom: nom, url: base + "#" + prepares[i].secret }; });
+        } catch (e) {
+          avertissement = " (Serveur injoignable : liens longs générés à la place.)";
+          liensCourants = null;
+        }
+      }
+      if (!liensCourants || !liensCourants.length) {
+        liensCourants = noms.map(function (nom, i) { return { nom: nom, url: base + "#" + SecretSanta.encode(charges[i]) }; });
+      }
+    } finally {
+      bouton.disabled = false;
+    }
     rendreResultats();
-    afficherMessage("🎉 Tirage réussi ! Voici les liens privés à envoyer.", "ok");
+    afficherMessage("🎉 Tirage réussi ! Voici les liens privés à envoyer." + avertissement, "ok");
     $("bloc-resultats").scrollIntoView({ behavior: "smooth", block: "start" });
   }
 
@@ -295,7 +318,7 @@
     liensCourants.forEach(function (l) {
       const msg = texteInvitation(l);
       const actions = [
-        el("button", { type: "button", class: "petit", texte: "📋 Copier", onclick: function (ev) { copier(msg, ev.currentTarget); } }),
+        el("button", { type: "button", class: "petit", texte: "📋 Copier le lien", onclick: function (ev) { copier(l.url, ev.currentTarget); } }),
         peutPartager ? el("button", { type: "button", class: "petit discret", texte: "📤 Partager",
           onclick: function () { navigator.share({ title: "Secret Santa", text: msg }).catch(function () {}); } }) : null,
         el("a", { class: "bouton petit discret", href: "https://wa.me/?text=" + encodeURIComponent(msg), target: "_blank", rel: "noopener noreferrer", texte: "WhatsApp" }),

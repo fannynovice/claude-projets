@@ -7,7 +7,7 @@ https://fannynovice.github.io/claude-projets/
 
 1. **Page organisateur** (`index.html`) : on saisit l'événement (nom, budget, date, petit mot), les participants et les exclusions.
 2. **Tirage** : il se fait entièrement dans le navigateur (`crypto.getRandomValues` + recherche avec retour arrière). Personne ne se tire soi-même.
-3. **Liens privés** : chaque participant reçoit un lien `voir.html#…`. Le destinataire est codé dans le fragment d'URL (après le `#`), qui n'est jamais envoyé au serveur.
+3. **Liens privés** : chaque participant reçoit un lien court `voir.html#<secret>`. Son contenu (prénom, destinataire, jetons) est chiffré en AES-GCM dans le navigateur de l'organisateur et déposé sur le serveur. La clé ne figure que dans le lien, après le `#`, qui n'est jamais envoyé au serveur. Si le serveur est injoignable, un lien long autonome est généré à la place.
 4. **Espace personnel** (`voir.html`) : le participant ouvre le cadeau, puis peut
    - remplir **sa liste de souhaits**, que son Père Noël secret verra ;
    - consulter **la liste** de la personne qu'il gâte ;
@@ -17,10 +17,10 @@ https://fannynovice.github.io/claude-projets/
 
 ## Confidentialité
 
-- Le tirage (qui offre à qui) n'est stocké nulle part : ni dans le dépôt, ni sur le serveur.
+- Le tirage (qui offre à qui) n'est jamais stocké dans le dépôt. Sur le serveur, il n'existe que sous forme chiffrée, illisible sans les liens.
 - Les listes et les messages sont stockés dans Supabase sous des **identifiants opaques** : l'empreinte SHA-256 de jetons aléatoires générés au moment du tirage et présents uniquement dans les liens. Le serveur ne connaît ni les prénoms ni les binômes.
 - Les tables ne sont pas lisibles directement : tout passe par des fonctions qui exigent le bon jeton (voir `supabase/schema.sql`).
-- Le contenu du lien est brouillé, pas chiffré : quelqu'un de technique qui obtient le lien de quelqu'un d'autre peut le décoder. Chacun doit donc garder son lien pour lui.
+- Quiconque obtient le lien de quelqu'un d'autre peut voir son destinataire : chacun doit garder son lien pour lui.
 - Le texte des souhaits et des messages est stocké tel quel sur le serveur.
 
 ## Configuration de Supabase (listes et messages)
