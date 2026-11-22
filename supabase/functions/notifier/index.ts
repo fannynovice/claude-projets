@@ -33,16 +33,32 @@ function serveur() {
   return serveurPromis;
 }
 
+const CORS = {
+  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Headers": "apikey, authorization, content-type",
+  "Access-Control-Allow-Methods": "POST, OPTIONS",
+};
+function json(o: unknown, status = 200) {
+  return new Response(JSON.stringify(o), { status, headers: { ...CORS, "Content-Type": "application/json" } });
+}
+
+type Abonne = { endpoint: string; cle: string; p256dh: string; auth: string };
+
+async function pousser(a: Abonne, titre: string, corps: string, type: string) {
+  const app = await serveur();
+  await app.subscribe({ endpoint: a.endpoint, keys: { p256dh: a.p256dh, auth: a.auth } })
+    .pushTextMessage(JSON.stringify({ titre, corps, cle: a.cle, type }),
+      { ttl: 86400, urgency: webpush.Urgency.High });
+}
+
 async function envoyer(sujet: string, titre: string, corps: string, type: string) {
-  const abonnes = await sql`select endpoint, cle, p256dh, auth from public.abonnements
+  const abonnes = await sql<Abonne[]>`select endpoint, cle, p256dh, auth from public.abonnements
                             where ${sujet} = any(sujets)`;
   if (!abonnes.length) return 0;
-  const app = await serveur();
   let n = 0;
   await Promise.all(abonnes.map(async (a) => {
     try {
-      await app.subscribe({ endpoint: a.endpoint, keys: { p256dh: a.p256dh, auth: a.auth } })
-        .pushTextMessage(JSON.stringify({ titre, corps, cle: a.cle, type }), { ttl: 86400 });
+      await pousser(a, titre, corps, type);
       n++;
     } catch (e) {
       const statut = e instanceof webpush.PushMessageError ? e.response.status : 0;
@@ -57,24 +73,40 @@ async function envoyer(sujet: string, titre: string, corps: string, type: string
 }
 
 Deno.serve(async (req) => {
-  if (req.method !== "POST") return new Response("ok");
-  let corps: { type?: string; id?: unknown };
-  try { corps = await req.json(); } catch { return new Response("json invalide", { status: 400 }); }
+  if (req.method === "OPTIONS") return new Response(null, { headers: CORS });
+  if (req.method !== "POST") return new Response("ok", { headers: CORS });
+  let corps: { type?: string; id?: unknown; endpoint?: unknown; cle?: unknown };
+  try { corps = await req.json(); } catch { return json({ erreur: "json invalide" }, 400); }
 
   try {
     if (corps.type === "init") {
       await serveur();
-      return Response.json({ ok: true });
+      return json({ ok: true });
+    }
+
+    // Test demandé depuis la page : n'envoie qu'à l'abonnement (endpoint + cle) fourni.
+    if (corps.type === "test" && typeof corps.endpoint === "string" && typeof corps.cle === "string") {
+      const [a] = await sql<Abonne[]>`select endpoint, cle, p256dh, auth from public.abonnements
+                                      where endpoint = ${corps.endpoint} and cle = ${corps.cle}`;
+      if (!a) return json({ ok: false, erreur: "abonnement inconnu" }, 404);
+      try {
+        await pousser(a, "🔔 Test Secret Santa", "Les notifications fonctionnent sur cet appareil !", "test");
+        return json({ ok: true });
+      } catch (e) {
+        const statut = e instanceof webpush.PushMessageError ? e.response.status : 0;
+        const detail = e instanceof webpush.PushMessageError ? await e.response.text().catch(() => "") : String(e);
+        return json({ ok: false, statut, detail: detail.slice(0, 300) }, 502);
+      }
     }
 
     if (corps.type === "message" && Number.isSafeInteger(corps.id)) {
       const [m] = await sql`update public.messages set notifie = true
                             where id = ${corps.id as number} and not notifie
                             returning canal, role`;
-      if (!m) return Response.json({ envoye: 0 });
+      if (!m) return json({ envoye: 0 });
       const titre = m.role === "pere" ? "🎅 Message de ton Père Noël secret" : "🎁 Nouveau message de la personne que tu gâtes";
       const n = await envoyer(`m:${m.canal}:${m.role}`, titre, "Ouvre ton Secret Santa pour le lire.", "message");
-      return Response.json({ envoye: n });
+      return json({ envoye: n });
     }
 
     if (corps.type === "liste" && typeof corps.id === "string" && /^[0-9a-f]{64}$/.test(corps.id)) {
@@ -82,15 +114,15 @@ Deno.serve(async (req) => {
                             where id = ${corps.id}
                               and (notifie_a is null or notifie_a < now() - interval '10 minutes')
                             returning id`;
-      if (!l) return Response.json({ envoye: 0 });
+      if (!l) return json({ envoye: 0 });
       const n = await envoyer(`l:${l.id}`, "📝 Liste de souhaits mise à jour",
         "La personne que tu gâtes a modifié sa liste.", "liste");
-      return Response.json({ envoye: n });
+      return json({ envoye: n });
     }
 
-    return new Response("requête invalide", { status: 400 });
+    return json({ erreur: "requête invalide" }, 400);
   } catch (e) {
     console.error(e);
-    return new Response("erreur", { status: 500 });
+    return json({ erreur: "erreur" }, 500);
   }
 });

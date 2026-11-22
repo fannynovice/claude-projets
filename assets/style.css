@@ -430,3 +430,6 @@ footer.pied a { color: var(--or); }
   .cadeau:not(.ouvert) { animation: none; }
   .destinataire { animation: none; }
 }
+
+.carte.notif .etat { white-space: pre-line; }
+#notif-test { margin-top: 10px; }
