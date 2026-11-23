@@ -26,7 +26,7 @@ https://fannynovice.github.io/claude-projets/
 ## Configuration de Supabase (listes et messages)
 
 1. Créer un projet gratuit sur https://supabase.com.
-2. Dans **SQL Editor**, coller et exécuter `supabase/schema.sql`.
+2. Dans **SQL Editor**, coller et exécuter `supabase/schema.sql`, puis `supabase/migration-tableau-de-bord.sql`. Déployer la fonction Edge `supabase/functions/notifier` avec « Verify JWT » désactivé.
 3. Dans **Project Settings → API Keys**, copier l'URL du projet et la clé **publishable** (ou « anon »), puis les renseigner dans `assets/config.js`. Cette clé est faite pour être publique.
 4. Pousser sur `main`.
 
@@ -37,3 +37,16 @@ Les liens générés avant la configuration n'ont pas les jetons nécessaires. I
 ## Développement local
 
 Servir le dossier avec n'importe quel serveur statique (par ex. `python -m http.server 8000`), puis ouvrir http://localhost:8000.
+
+## Organisateur : tirage unique et tableau de bord
+
+- Le premier tirage crée un **lien organisateur** secret (`…/#admin=…`). Il est aussi mémorisé dans le navigateur de l'organisateur.
+- Avec ce lien, la page d'accueil affiche le **tableau de bord** :
+  - quels liens ont été ouverts ;
+  - les listes de souhaits, que l'organisateur peut modifier ;
+  - un bouton pour recopier ou renvoyer chaque lien.
+
+  Le tableau de bord ne montre jamais qui offre à qui.
+- Un **nouveau tirage** exige le lien organisateur. Il efface entièrement le précédent : liens, listes, messages et abonnements aux notifications.
+- Les fiches des participants (prénom, photo, lien) sont chiffrées avec une clé dérivée du lien organisateur. Le serveur n'en garde que l'empreinte.
+- **Photos** : l'organisateur peut ajouter une photo par participant. Elle est réduite à 256 px, puis montrée à la personne qui lui offre un cadeau.
