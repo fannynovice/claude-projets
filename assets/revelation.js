@@ -90,6 +90,12 @@
   const zone = el("div", "destinataire");
   zone.setAttribute("aria-live", "polite");
   zone.appendChild(el("p", null, "Tu offres un cadeau à…"));
+  if (typeof donnees.p === "string" && /^data:image\/jpeg;base64,[A-Za-z0-9+/=]+$/.test(donnees.p)) {
+    const photo = el("img", "photo-destinataire");
+    photo.src = donnees.p;
+    photo.alt = "Photo de " + donnees.r;
+    zone.appendChild(photo);
+  }
   zone.appendChild(el("p", "nom-destinataire", donnees.r));
   zone.appendChild(el("p", "aide", "Chut ! C'est un secret. 🤫"));
 

@@ -251,6 +251,10 @@ create trigger souhaits_notifier after insert or update of contenu on public.sou
   for each row execute function public._notifier('liste');
 
 -- ---------------------------------------------------------------------
+-- SUITE : exécuter ensuite migration-tableau-de-bord.sql (tirage persistant,
+-- lien organisateur, tableau de bord). Elle remplace creer_liens et lire_lien.
+
+-- ---------------------------------------------------------------------
 -- Ménage après les fêtes (à lancer à la main quand vous voulez) :
 -- delete from public.messages where cree < now() - interval '90 days';
 -- delete from public.souhaits where maj  < now() - interval '90 days';

@@ -60,24 +60,39 @@
   }
   async function idLien(secret) { return (await sha256Hex("id:" + secret)).slice(0, 32); }
 
-  async function preparerLien(obj) {
-    const secret = jeton();
+  async function chiffrer(secret, obj) {
     const iv = crypto.getRandomValues(new Uint8Array(12));
     const ct = new Uint8Array(await crypto.subtle.encrypt({ name: "AES-GCM", iv: iv },
       await cleAes(secret), new TextEncoder().encode(JSON.stringify(obj))));
     const tout = new Uint8Array(12 + ct.length);
     tout.set(iv, 0); tout.set(ct, 12);
-    return { secret: secret, id: await idLien(secret), d: b64u(tout) };
+    return b64u(tout);
   }
 
-  async function ouvrirLien(secret) {
-    const d = await rpc("lire_lien", { p_id: await idLien(secret) });
-    if (!d) throw new Error("lien introuvable");
+  async function dechiffrer(secret, d) {
     const tout = deB64u(d);
     const clair = await crypto.subtle.decrypt({ name: "AES-GCM", iv: tout.subarray(0, 12) },
       await cleAes(secret), tout.subarray(12));
     return JSON.parse(new TextDecoder().decode(clair));
   }
+
+  async function preparerLien(obj) {
+    const secret = jeton();
+    return { secret: secret, id: await idLien(secret), d: await chiffrer(secret, obj) };
+  }
+
+  async function ouvrirLien(secret) {
+    const d = await rpc("lire_lien", { p_id: await idLien(secret) });
+    if (!d) throw new Error("lien introuvable");
+    return dechiffrer(secret, d);
+  }
+
+  /* ---------- Organisateur ----------
+   * Secret A (dans le lien organisateur). Le serveur reçoit seulement
+   * jeton = sha256("admin:" + A) ; les fiches participants sont chiffrées
+   * avec la clé dérivée de "orga:" + A. */
+  function jetonAdmin(a) { return sha256Hex("admin:" + a); }
+  function secretFiches(a) { return "orga:" + a; }
 
   global.SecretSantaApi = {
     actif: actif,
@@ -86,7 +101,23 @@
     abonnerPush: function (p) { return rpc("abonner_push", p); },
     desabonnerPush: function (endpoint, cle) { return rpc("desabonner_push", { p_endpoint: endpoint, p_cle: cle }); },
     ouvrirLien: ouvrirLien,
-    creerLiens: function (liste) { return rpc("creer_liens", { p_liens: liste.map(function (l) { return { id: l.id, d: l.d }; }) }); },
+    idLien: idLien,
+    chiffrerFiche: function (a, obj) { return chiffrer(secretFiches(a), obj); },
+    dechiffrerFiche: function (a, d) { return dechiffrer(secretFiches(a), d); },
+    jetonAdmin: jetonAdmin,
+    tirageExiste: function () { return rpc("tirage_existe", {}); },
+    adminVerifier: async function (a) { return rpc("admin_verifier", { p_jeton: await jetonAdmin(a) }); },
+    nouveauTirage: async function (a, liens, participants) {
+      return rpc("nouveau_tirage", {
+        p_jeton: await jetonAdmin(a),
+        p_liens: liens.map(function (l) { return { id: l.id, d: l.d }; }),
+        p_participants: participants
+      });
+    },
+    adminTableau: async function (a) { return rpc("admin_tableau", { p_jeton: await jetonAdmin(a) }); },
+    adminEnregistrerSouhaits: async function (a, idListe, liste) {
+      return rpc("admin_enregistrer_souhaits", { p_jeton: await jetonAdmin(a), p_souhaits_id: idListe, p_contenu: liste });
+    },
     sha256Hex: sha256Hex,
     jeton: jeton,
     enregistrerSouhaits: function (cleEcriture, liste) { return rpc("enregistrer_souhaits", { p_cle: cleEcriture, p_contenu: liste }); },

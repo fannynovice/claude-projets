@@ -2,26 +2,38 @@
   "use strict";
 
   const CLE_BROUILLON = "secret-santa-brouillon-v1";
+  const CLE_ADMIN = "ss-admin";
   const $ = function (id) { return document.getElementById(id); };
+  const Api = window.SecretSantaApi;
+  const enLigne = !!(Api && Api.actif());
 
-  // État : uniquement la configuration. Les résultats du tirage ne sont jamais sauvegardés.
+  // Brouillon : la configuration seulement (jamais le résultat du tirage).
   const etat = {
     participants: [],          // ["Alice", "Bob", ...]
-    exclusions: []             // [["Alice", "Bob"], ...]  => Alice n'offre pas à Bob
+    exclusions: [],            // [["Alice", "Bob"], ...]  => Alice n'offre pas à Bob
+    photos: {}                 // { "Alice": "data:image/jpeg;base64,..." }
   };
+
+  let admin = null;            // secret organisateur (présent dans le lien organisateur)
+  let tirageExiste = false;
+  let liensCourants = [];
 
   /* ---------- Brouillon local (confort uniquement) ---------- */
   function sauver() {
-    try {
-      localStorage.setItem(CLE_BROUILLON, JSON.stringify({
-        participants: etat.participants,
-        exclusions: etat.exclusions,
-        titre: $("titre").value,
-        budget: $("budget").value,
-        date: $("date").value,
-        mot: $("mot").value
-      }));
-    } catch (e) { /* stockage indisponible : sans importance */ }
+    const d = {
+      participants: etat.participants,
+      exclusions: etat.exclusions,
+      photos: etat.photos,
+      titre: $("titre").value,
+      budget: $("budget").value,
+      date: $("date").value,
+      mot: $("mot").value
+    };
+    try { localStorage.setItem(CLE_BROUILLON, JSON.stringify(d)); }
+    catch (e) {
+      // Stockage plein (photos) : on garde au moins le reste.
+      try { d.photos = {}; localStorage.setItem(CLE_BROUILLON, JSON.stringify(d)); } catch (e2) { /* ignore */ }
+    }
   }
 
   function charger() {
@@ -32,11 +44,21 @@
       etat.exclusions = Array.isArray(d.exclusions) ? d.exclusions.filter(function (x) {
         return Array.isArray(x) && etat.participants.indexOf(x[0]) >= 0 && etat.participants.indexOf(x[1]) >= 0;
       }) : [];
+      etat.photos = {};
+      if (d.photos && typeof d.photos === "object") {
+        Object.keys(d.photos).forEach(function (n) {
+          if (etat.participants.indexOf(n) >= 0 && photoValide(d.photos[n])) etat.photos[n] = d.photos[n];
+        });
+      }
       $("titre").value = d.titre || "";
       $("budget").value = d.budget || "";
       $("date").value = d.date || "";
       $("mot").value = d.mot || "";
     } catch (e) { /* ignore */ }
+  }
+
+  function memoAdmin(a) {
+    try { if (a) localStorage.setItem(CLE_ADMIN, a); else localStorage.removeItem(CLE_ADMIN); } catch (e) { /* ignore */ }
   }
 
   /* ---------- Participants ---------- */
@@ -54,16 +76,55 @@
     });
     if (doublons.length) afficherMessage("Déjà dans la liste : " + doublons.join(", "), "erreur");
     else effacerMessage();
-    invaliderTirage();
     rendre();
   }
 
   function retirerParticipant(nom) {
     etat.participants = etat.participants.filter(function (p) { return p !== nom; });
     etat.exclusions = etat.exclusions.filter(function (x) { return x[0] !== nom && x[1] !== nom; });
-    invaliderTirage();
+    delete etat.photos[nom];
     rendre();
   }
+
+  /* ---------- Photos ---------- */
+  function photoValide(p) { return typeof p === "string" && /^data:image\/jpeg;base64,[A-Za-z0-9+/=]+$/.test(p) && p.length < 120000; }
+
+  // Recadre au carré et réduit à 256 px (JPEG) pour garder des liens légers.
+  function reduirePhoto(fichier) {
+    return new Promise(function (ok, ko) {
+      const url = URL.createObjectURL(fichier);
+      const img = new Image();
+      img.onload = function () {
+        const cote = Math.min(img.naturalWidth, img.naturalHeight);
+        const taille = Math.min(256, cote);
+        const c = document.createElement("canvas");
+        c.width = c.height = taille;
+        c.getContext("2d").drawImage(img, (img.naturalWidth - cote) / 2, (img.naturalHeight - cote) / 2, cote, cote, 0, 0, taille, taille);
+        URL.revokeObjectURL(url);
+        let q = 0.8, data = c.toDataURL("image/jpeg", q);
+        while (data.length > 40000 && q > 0.35) { q -= 0.1; data = c.toDataURL("image/jpeg", q); }
+        ok(data);
+      };
+      img.onerror = function () { URL.revokeObjectURL(url); ko(new Error("image illisible")); };
+      img.src = url;
+    });
+  }
+
+  let photoPour = null;
+  function choisirPhoto(nom) { photoPour = nom; $("photo-fichier").value = ""; $("photo-fichier").click(); }
+
+  $("photo-fichier").addEventListener("change", async function () {
+    const f = this.files && this.files[0];
+    if (!f || !photoPour) return;
+    try {
+      etat.photos[photoPour] = await reduirePhoto(f);
+      effacerMessage();
+    } catch (e) {
+      afficherMessage("Impossible de lire cette image : " + e.message, "erreur");
+    }
+    photoPour = null;
+    rendre();
+  });
 
   /* ---------- Exclusions ---------- */
   function aExclusion(a, b) {
@@ -76,19 +137,16 @@
     if (!aExclusion(a, b)) etat.exclusions.push([a, b]);
     if (reciproque && !aExclusion(b, a)) etat.exclusions.push([b, a]);
     effacerMessage();
-    invaliderTirage();
     rendre();
   }
 
   function retirerExclusion(a, b) {
     etat.exclusions = etat.exclusions.filter(function (x) { return !(x[0] === a && x[1] === b); });
-    invaliderTirage();
     rendre();
   }
 
   /* ---------- Tirage ---------- */
   function aleatoire(n) {
-    // Entier uniforme dans [0, n) via crypto
     const max = Math.floor(0x100000000 / n) * n;
     const buf = new Uint32Array(1);
     let x;
@@ -120,7 +178,6 @@
     });
     if (options.some(function (o) { return o.length === 0; })) return null;
 
-    // Ordre : les plus contraints d'abord (ex æquo départagés au hasard)
     const ordre = melanger(noms.map(function (_, i) { return i; }))
       .sort(function (a, b) { return options[a].length - options[b].length; });
 
@@ -146,13 +203,12 @@
     return placer(0) ? cible : null;
   }
 
-  function urlRevelation() {
-    const u = new URL("voir.html", window.location.href);
+  function urlPage(nom) {
+    const u = new URL(nom, window.location.href);
     u.search = ""; u.hash = "";
     return u.toString();
   }
-
-  let liensCourants = [];
+  function lienAdmin() { return urlPage("./") + "#admin=" + admin; }
 
   async function lancerTirage() {
     effacerMessage();
@@ -161,75 +217,74 @@
       afficherMessage("Il faut au moins 3 participants pour un Secret Santa.", "erreur");
       return;
     }
+    if (enLigne && tirageExiste && !admin) {
+      afficherMessage("Un tirage existe déjà : ouvrez votre lien organisateur pour le remplacer.", "erreur");
+      return;
+    }
+    if (enLigne && tirageExiste && !confirm("Ce nouveau tirage va effacer le tirage actuel (liens, listes de souhaits, messages). Continuer ?")) return;
+
     const resultat = tirage(noms, etat.exclusions);
     if (!resultat) {
       afficherMessage("Impossible de trouver un tirage qui respecte toutes les exclusions. Retirez-en quelques-unes et réessayez.", "erreur");
-      $("bloc-resultats").hidden = true;
       return;
     }
-    const base = urlRevelation();
-    const infos = {
-      t: $("titre").value.trim(),
-      b: $("budget").value.trim(),
-      j: $("date").value,
-      m: $("mot").value.trim()
-    };
-    // Jetons secrets pour les listes de souhaits et la messagerie.
-    // w[i] : jeton d'écriture de la liste de i ; c[i] : canal entre i (Père Noël) et son destinataire.
-    // Rien de tout cela n'est envoyé au serveur au moment du tirage.
-    const enLigne = typeof SecretSantaApi !== "undefined" && SecretSantaApi.actif();
+    const base = urlPage("voir.html");
+    const infos = { t: $("titre").value.trim(), b: $("budget").value.trim(), j: $("date").value, m: $("mot").value.trim() };
+
+    // Jetons secrets : w[i] écrit la liste de i ; c[i] = canal entre i (Père Noël) et son destinataire.
     let w = [], c = [], idListe = [], pere = [];
     if (enLigne) {
-      w = noms.map(function () { return SecretSantaApi.jeton(); });
-      c = noms.map(function () { return SecretSantaApi.jeton(); });
-      idListe = await Promise.all(w.map(SecretSantaApi.sha256Hex));
+      w = noms.map(function () { return Api.jeton(); });
+      c = noms.map(function () { return Api.jeton(); });
+      idListe = await Promise.all(w.map(Api.sha256Hex));
       resultat.forEach(function (j, i) { pere[j] = i; });
     }
     const charges = noms.map(function (nom, i) {
-      const charge = { v: enLigne ? 2 : 1, d: nom, r: noms[resultat[i]] };
+      const dest = noms[resultat[i]];
+      const charge = { v: enLigne ? 2 : 1, d: nom, r: dest };
       Object.keys(infos).forEach(function (k) { if (infos[k]) charge[k] = infos[k]; });
       if (enLigne) {
-        charge.w = w[i];                  // écrire sa propre liste
-        charge.l = idListe[resultat[i]];  // lire la liste de son destinataire
-        charge.cd = c[i];                 // discuter avec son destinataire
-        charge.cr = c[pere[i]];           // discuter avec son Père Noël secret
+        charge.w = w[i];
+        charge.l = idListe[resultat[i]];
+        charge.cd = c[i];
+        charge.cr = c[pere[i]];
+        if (etat.photos[dest]) charge.p = etat.photos[dest];   // photo de la personne à gâter
       }
       return charge;
     });
 
-    let avertissement = "";
-    liensCourants = null;
     const bouton = $("tirer");
     bouton.disabled = true;
+    bouton.textContent = "⏳ Tirage en cours…";
     try {
       if (enLigne) {
-        // Liens courts : contenu chiffré déposé sur le serveur, clé uniquement dans le lien.
-        try {
-          const prepares = await Promise.all(charges.map(SecretSantaApi.preparerLien));
-          await SecretSantaApi.creerLiens(prepares);
-          liensCourants = noms.map(function (nom, i) { return { nom: nom, url: base + "#" + prepares[i].secret }; });
-        } catch (e) {
-          avertissement = " (Serveur injoignable : liens longs générés à la place.)";
-          liensCourants = null;
-        }
-      }
-      if (!liensCourants || !liensCourants.length) {
+        const a = admin || Api.jeton();
+        const prepares = await Promise.all(charges.map(Api.preparerLien));
+        const urls = prepares.map(function (p) { return base + "#" + p.secret; });
+        const fiches = await Promise.all(noms.map(async function (nom, i) {
+          const fiche = { nom: nom, lien: urls[i] };
+          if (etat.photos[nom]) fiche.photo = etat.photos[nom];
+          return { d: await Api.chiffrerFiche(a, fiche), s: idListe[i], l: prepares[i].id };
+        }));
+        await Api.nouveauTirage(a, prepares, fiches);
+        admin = a;
+        memoAdmin(a);
+        tirageExiste = true;
+        liensCourants = noms.map(function (nom, i) { return { nom: nom, url: urls[i] }; });
+      } else {
         liensCourants = noms.map(function (nom, i) { return { nom: nom, url: base + "#" + SecretSanta.encode(charges[i]) }; });
       }
+    } catch (e) {
+      afficherMessage("Le tirage n'a pas pu être enregistré : " + e.message, "erreur");
+      return;
     } finally {
       bouton.disabled = false;
+      bouton.textContent = "🎲 Lancer le tirage";
     }
     rendreResultats();
-    afficherMessage("🎉 Tirage réussi ! Voici les liens privés à envoyer." + avertissement, "ok");
+    afficherMessage("🎉 Tirage réussi ! Les liens sont prêts à être envoyés.", "ok");
+    if (enLigne) { afficherModeAdmin(); chargerTableau(); }
     $("bloc-resultats").scrollIntoView({ behavior: "smooth", block: "start" });
-  }
-
-  function invaliderTirage() {
-    if (liensCourants.length) {
-      liensCourants = [];
-      $("bloc-resultats").hidden = true;
-      $("resultats").innerHTML = "";
-    }
   }
 
   /* ---------- Partage ---------- */
@@ -260,6 +315,19 @@
     document.body.removeChild(t);
   }
 
+  function actionsPartage(l) {
+    const msg = texteInvitation(l);
+    const peutPartager = typeof navigator.share === "function";
+    return [
+      el("button", { type: "button", class: "petit", texte: "📋 Copier le lien", onclick: function (ev) { copier(l.url, ev.currentTarget); } }),
+      peutPartager ? el("button", { type: "button", class: "petit discret", texte: "📤 Partager",
+        onclick: function () { navigator.share({ title: "Secret Santa", text: msg }).catch(function () {}); } }) : null,
+      el("a", { class: "bouton petit discret", href: "https://wa.me/?text=" + encodeURIComponent(msg), target: "_blank", rel: "noopener noreferrer", texte: "WhatsApp" }),
+      el("a", { class: "bouton petit discret", href: "sms:?&body=" + encodeURIComponent(msg), texte: "SMS" }),
+      el("a", { class: "bouton petit discret", href: "mailto:?subject=" + encodeURIComponent("🎅 Ton Secret Santa") + "&body=" + encodeURIComponent(msg), texte: "E-mail" })
+    ];
+  }
+
   /* ---------- Rendu ---------- */
   function el(tag, props, enfants) {
     const e = document.createElement(tag);
@@ -272,20 +340,33 @@
     return e;
   }
 
+  function vignette(photo, nom, cls) {
+    if (photoValide(photo)) {
+      const i = el("img", { class: cls || "vignette", alt: "Photo de " + nom });
+      i.src = photo;
+      return i;
+    }
+    return el("span", { class: (cls || "vignette") + " sans-photo", "aria-hidden": "true", texte: (nom || "?").charAt(0).toUpperCase() });
+  }
+
   function rendre() {
-    // Participants
     const ul = $("liste-participants");
     ul.innerHTML = "";
     etat.participants.forEach(function (nom) {
+      const aPhoto = !!etat.photos[nom];
       ul.appendChild(el("li", { class: "puce" }, [
+        aPhoto ? vignette(etat.photos[nom], nom, "puce-photo") : null,
         el("span", { texte: nom }),
+        el("button", { type: "button", class: "puce-action", "aria-label": (aPhoto ? "Changer la photo de " : "Ajouter une photo pour ") + nom,
+          title: aPhoto ? "Changer la photo" : "Ajouter une photo", texte: "📷", onclick: function () { choisirPhoto(nom); } }),
+        aPhoto ? el("button", { type: "button", class: "puce-action", "aria-label": "Retirer la photo de " + nom, title: "Retirer la photo", texte: "🚫",
+          onclick: function () { delete etat.photos[nom]; rendre(); } }) : null,
         el("button", { type: "button", "aria-label": "Retirer " + nom, title: "Retirer", texte: "×",
           onclick: function () { retirerParticipant(nom); } })
       ]));
     });
     $("aucun-participant").hidden = etat.participants.length > 0;
 
-    // Sélecteurs d'exclusion
     ["excl-de", "excl-a"].forEach(function (id, idx) {
       const s = $(id);
       const avant = s.value;
@@ -296,7 +377,6 @@
       s.disabled = etat.participants.length < 2;
     });
 
-    // Exclusions
     const ue = $("liste-exclusions");
     ue.innerHTML = "";
     etat.exclusions.forEach(function (x) {
@@ -314,32 +394,142 @@
   function rendreResultats() {
     const ul = $("resultats");
     ul.innerHTML = "";
-    const peutPartager = typeof navigator.share === "function";
     liensCourants.forEach(function (l) {
-      const msg = texteInvitation(l);
-      const actions = [
-        el("button", { type: "button", class: "petit", texte: "📋 Copier le lien", onclick: function (ev) { copier(l.url, ev.currentTarget); } }),
-        peutPartager ? el("button", { type: "button", class: "petit discret", texte: "📤 Partager",
-          onclick: function () { navigator.share({ title: "Secret Santa", text: msg }).catch(function () {}); } }) : null,
-        el("a", { class: "bouton petit discret", href: "https://wa.me/?text=" + encodeURIComponent(msg), target: "_blank", rel: "noopener noreferrer", texte: "WhatsApp" }),
-        el("a", { class: "bouton petit discret", href: "sms:?&body=" + encodeURIComponent(msg), texte: "SMS" }),
-        el("a", { class: "bouton petit discret", href: "mailto:?subject=" + encodeURIComponent("🎅 Ton Secret Santa") + "&body=" + encodeURIComponent(msg), texte: "E-mail" })
-      ];
       ul.appendChild(el("li", null, [
         el("div", { class: "nom" }, [el("span", { texte: "🎁 Lien de " + l.nom })]),
         el("div", { class: "lien", texte: l.url }),
-        el("div", { class: "actions" }, actions)
+        el("div", { class: "actions" }, actionsPartage(l))
       ]));
     });
+    $("bloc-lien-admin").hidden = !admin;
+    if (admin) $("lien-admin").textContent = lienAdmin();
     $("bloc-resultats").hidden = false;
   }
 
-  function afficherMessage(texte, type) {
-    const m = $("message");
+  function afficherMessage(texte, type, cible) {
+    const m = $(cible || "message");
     m.className = "message " + type;
     m.textContent = texte;
   }
-  function effacerMessage() { const m = $("message"); m.className = ""; m.textContent = ""; }
+  function effacerMessage(cible) { const m = $(cible || "message"); m.className = ""; m.textContent = ""; }
+
+  /* ---------- Tableau de bord ---------- */
+  function dateFr(iso) {
+    return new Date(iso).toLocaleString("fr-FR", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
+  }
+
+  function lienSur(u) {
+    try { const x = new URL(u); return (x.protocol === "https:" || x.protocol === "http:") ? x.toString() : null; }
+    catch (e) { return null; }
+  }
+
+  function nettoyerListe(liste) {
+    if (!Array.isArray(liste)) return [];
+    return liste.filter(function (s) { return s && typeof s.t === "string"; })
+      .map(function (s) { return { t: s.t.slice(0, 120), u: typeof s.u === "string" ? s.u.slice(0, 500) : "" }; });
+  }
+
+  function editeurListe(p) {
+    const boite = el("details", { class: "liste-admin" });
+    const resume = el("summary");
+    const ul = el("ul", { class: "souhaits" });
+    const etatTxt = el("p", { class: "etat", role: "status" });
+
+    function majResume() { resume.textContent = "📝 Liste de souhaits (" + p.liste.length + ")"; }
+
+    async function enregistrer() {
+      etatTxt.textContent = "Enregistrement…";
+      try {
+        await Api.adminEnregistrerSouhaits(admin, p.souhaits_id, p.liste);
+        etatTxt.textContent = "✅ Enregistré";
+      } catch (e) {
+        etatTxt.textContent = "⚠️ " + e.message;
+      }
+    }
+
+    function rendreItems() {
+      ul.innerHTML = "";
+      p.liste.forEach(function (s, i) {
+        const corps = el("div", { class: "souhait-corps" }, [el("span", { class: "souhait-texte", texte: s.t })]);
+        const u = s.u && lienSur(s.u);
+        if (u) corps.appendChild(el("a", { class: "souhait-lien", href: u, target: "_blank", rel: "noopener noreferrer nofollow", texte: new URL(u).hostname.replace(/^www\./, "") + " ↗" }));
+        ul.appendChild(el("li", null, [corps, el("button", { type: "button", class: "retirer petit", texte: "Retirer",
+          "aria-label": "Retirer " + s.t, onclick: function () { p.liste.splice(i, 1); rendreItems(); enregistrer(); } })]));
+      });
+      if (!p.liste.length) ul.appendChild(el("li", { class: "vide-liste" }, [el("span", { class: "vide", texte: "Liste vide." })]));
+      majResume();
+    }
+
+    const champT = el("input", { type: "text", maxlength: "120", placeholder: "Ajouter une idée", "aria-label": "Idée de cadeau pour " + p.nom });
+    const champU = el("input", { type: "text", maxlength: "500", placeholder: "Lien (facultatif)", inputmode: "url", "aria-label": "Lien de l'idée" });
+    const form = el("form", { class: "ajout-admin" }, [champT, champU, el("button", { type: "submit", class: "petit", texte: "Ajouter" })]);
+    form.addEventListener("submit", function (e) {
+      e.preventDefault();
+      const t = champT.value.trim(), u = champU.value.trim();
+      if (!t) return;
+      if (u && !lienSur(u)) { etatTxt.textContent = "⚠️ Le lien doit commencer par https://"; return; }
+      if (p.liste.length >= 30) { etatTxt.textContent = "⚠️ 30 idées maximum."; return; }
+      p.liste.push({ t: t, u: u });
+      champT.value = ""; champU.value = "";
+      rendreItems();
+      enregistrer();
+    });
+
+    boite.appendChild(resume);
+    boite.appendChild(ul);
+    boite.appendChild(form);
+    boite.appendChild(etatTxt);
+    rendreItems();
+    return boite;
+  }
+
+  async function chargerTableau() {
+    if (!admin) return;
+    const ul = $("tableau");
+    effacerMessage("tableau-message");
+    let lignes;
+    try {
+      lignes = await Api.adminTableau(admin);
+    } catch (e) {
+      afficherMessage("Impossible de charger le tableau de bord : " + e.message, "erreur", "tableau-message");
+      return;
+    }
+    const personnes = await Promise.all((lignes || []).map(async function (r) {
+      let f = {};
+      try { f = await Api.dechiffrerFiche(admin, r.donnees); } catch (e) { f = { nom: "(illisible)" }; }
+      return { nom: f.nom || "?", lien: f.lien || "", photo: f.photo, souhaits_id: r.souhaits_id,
+        liste: nettoyerListe(r.souhaits), ouvert_a: r.ouvert_a, ouvertures: r.ouvertures };
+    }));
+    personnes.sort(function (a, b) { return a.nom.localeCompare(b.nom, "fr"); });
+
+    const ouverts = personnes.filter(function (p) { return p.ouvert_a; }).length;
+    $("tableau-resume").textContent = personnes.length
+      ? "🔓 " + ouverts + " lien" + (ouverts > 1 ? "s" : "") + " ouvert" + (ouverts > 1 ? "s" : "") + " sur " + personnes.length
+      : "Aucun participant.";
+
+    ul.innerHTML = "";
+    personnes.forEach(function (p) {
+      const statut = p.ouvert_a
+        ? el("span", { class: "statut ouvert", texte: "✅ Ouvert le " + dateFr(p.ouvert_a) })
+        : el("span", { class: "statut ferme", texte: "⏳ Pas encore ouvert" });
+      const entete = el("div", { class: "tableau-entete" }, [
+        vignette(p.photo, p.nom),
+        el("div", { class: "tableau-nom" }, [el("strong", { texte: p.nom }), statut])
+      ]);
+      const actions = el("div", { class: "actions" }, [
+        el("button", { type: "button", class: "petit discret", texte: "📋 Copier son lien", onclick: function (ev) { copier(p.lien, ev.currentTarget); } }),
+        el("a", { class: "bouton petit discret", href: "https://wa.me/?text=" + encodeURIComponent(texteInvitation(p)), target: "_blank", rel: "noopener noreferrer", texte: "Renvoyer par WhatsApp" })
+      ]);
+      ul.appendChild(el("li", null, [entete, editeurListe(p), actions]));
+    });
+  }
+
+  function afficherModeAdmin() {
+    $("bloc-tableau").hidden = false;
+    $("bloc-acces").hidden = true;
+    $("formulaire").hidden = true;
+    $("avert-remplacement").hidden = false;
+  }
 
   /* ---------- Événements ---------- */
   $("form-participant").addEventListener("submit", function (e) {
@@ -365,7 +555,7 @@
   });
 
   ["titre", "budget", "date", "mot"].forEach(function (id) {
-    $(id).addEventListener("input", function () { invaliderTirage(); sauver(); });
+    $(id).addEventListener("input", sauver);
   });
 
   $("tirer").addEventListener("click", lancerTirage);
@@ -374,18 +564,75 @@
     copier(liensCourants.map(function (l) { return l.nom + " : " + l.url; }).join("\n"), e.currentTarget);
   });
 
+  $("copier-lien-admin").addEventListener("click", function (e) { copier(lienAdmin(), e.currentTarget); });
+  $("copier-lien-admin-2").addEventListener("click", function (e) { copier(lienAdmin(), e.currentTarget); });
+  $("tableau-rafraichir").addEventListener("click", chargerTableau);
+  $("nouveau-tirage").addEventListener("click", function () {
+    $("formulaire").hidden = false;
+    $("formulaire").scrollIntoView({ behavior: "smooth", block: "start" });
+  });
+
+  $("form-acces").addEventListener("submit", async function (e) {
+    e.preventDefault();
+    const v = $("acces-lien").value.trim();
+    const m = /admin=([A-Za-z0-9_-]{20,})/.exec(v);
+    const a = m ? m[1] : (/^[A-Za-z0-9_-]{20,}$/.test(v) ? v : null);
+    if (!a) { afficherMessage("Ce n'est pas un lien organisateur.", "erreur", "acces-message"); return; }
+    try {
+      if (!(await Api.adminVerifier(a))) throw new Error("lien organisateur incorrect");
+      admin = a; memoAdmin(a);
+      effacerMessage("acces-message");
+      afficherModeAdmin();
+      chargerTableau();
+    } catch (err) {
+      afficherMessage("Accès refusé : " + err.message, "erreur", "acces-message");
+    }
+  });
+
   $("reinitialiser").addEventListener("click", function () {
-    if (!confirm("Effacer tous les participants, exclusions et informations ?")) return;
-    etat.participants = []; etat.exclusions = [];
+    if (!confirm("Effacer le brouillon (participants, photos, exclusions et informations) de cet appareil ?")) return;
+    etat.participants = []; etat.exclusions = []; etat.photos = {};
     ["titre", "budget", "date", "mot"].forEach(function (id) { $(id).value = ""; });
-    invaliderTirage(); effacerMessage(); rendre();
+    effacerMessage(); rendre();
     try { localStorage.removeItem(CLE_BROUILLON); } catch (e) { /* ignore */ }
   });
 
-  // Exposé pour les tests manuels dans la console
   window.__tirage = tirage;
 
-  charger();
-  rendre();
-  SecretSanta.neige(28);
+  /* ---------- Démarrage ---------- */
+  async function demarrer() {
+    charger();
+    rendre();
+    SecretSanta.neige(28);
+    if (!enLigne) { $("bloc-chargement").hidden = true; return; }
+
+    $("formulaire").hidden = true;
+    let a = null;
+    const m = /admin=([A-Za-z0-9_-]{20,})/.exec(window.location.hash);
+    if (m) {
+      a = m[1];
+      history.replaceState(null, "", window.location.pathname + window.location.search);
+    } else {
+      try { a = localStorage.getItem(CLE_ADMIN); } catch (e) { a = null; }
+    }
+    try {
+      tirageExiste = await Api.tirageExiste();
+      if (a && tirageExiste && await Api.adminVerifier(a)) {
+        admin = a; memoAdmin(a);
+      } else if (a && tirageExiste) {
+        memoAdmin(null);
+      }
+    } catch (e) {
+      $("bloc-chargement").hidden = true;
+      $("formulaire").hidden = false;
+      afficherMessage("Serveur injoignable : " + e.message, "erreur");
+      return;
+    }
+    $("bloc-chargement").hidden = true;
+    if (admin) { afficherModeAdmin(); chargerTableau(); }
+    else if (tirageExiste) { $("bloc-acces").hidden = false; }
+    else { $("formulaire").hidden = false; }
+  }
+
+  demarrer();
 })();

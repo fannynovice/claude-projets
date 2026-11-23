@@ -11,7 +11,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Mountains+of+Christmas:wght@700&family=Nunito:wght@400;700;800&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="assets/style.css?v=7">
+  <link rel="stylesheet" href="assets/style.css?v=8">
 </head>
 <body>
   <main class="page">
@@ -21,6 +21,34 @@
       <p>Tirage au sort secret, directement dans votre navigateur.</p>
     </header>
 
+    <section class="carte" id="bloc-chargement">
+      <p class="aide" style="margin:0">Chargement…</p>
+    </section>
+
+    <section class="carte" id="bloc-acces" aria-labelledby="t-acces" hidden>
+      <h2 id="t-acces">Tirage en cours 🎄</h2>
+      <p class="aide">Un tirage a déjà été fait. Pour ouvrir le tableau de bord ou refaire un tirage, utilisez votre <strong>lien organisateur</strong> (reçu au moment du tirage).</p>
+      <form id="form-acces" class="ligne" autocomplete="off">
+        <input type="text" id="acces-lien" placeholder="Collez votre lien organisateur" aria-label="Lien organisateur">
+        <button type="submit">Ouvrir</button>
+      </form>
+      <div id="acces-message" role="status"></div>
+    </section>
+
+    <section class="carte verte" id="bloc-tableau" aria-labelledby="t-tableau" hidden>
+      <h2 id="t-tableau">Tableau de bord</h2>
+      <p class="aide">Vous voyez qui a ouvert son lien et les listes de souhaits, jamais qui offre à qui.</p>
+      <p id="tableau-resume" class="resume"></p>
+      <ul id="tableau" class="tableau"></ul>
+      <div class="actions-tableau">
+        <button type="button" id="tableau-rafraichir" class="discret petit">🔄 Actualiser</button>
+        <button type="button" id="copier-lien-admin" class="discret petit">🔑 Copier mon lien organisateur</button>
+        <button type="button" id="nouveau-tirage" class="discret petit">🎲 Préparer un nouveau tirage</button>
+      </div>
+      <div id="tableau-message" role="status"></div>
+    </section>
+
+    <div id="formulaire">
     <section class="carte verte" aria-labelledby="t-evenement">
       <h2 id="t-evenement">L'événement</h2>
       <p class="aide">Ces informations apparaîtront sur la page de chaque participant (facultatif).</p>
@@ -46,7 +74,8 @@
 
     <section class="carte" aria-labelledby="t-participants">
       <h2 id="t-participants">Participants</h2>
-      <p class="aide">Ajoutez au moins 3 personnes. Astuce : vous pouvez coller plusieurs prénoms séparés par des virgules ou des retours à la ligne.</p>
+      <p class="aide">Ajoutez au moins 3 personnes. Astuce : vous pouvez coller plusieurs prénoms séparés par des virgules ou des retours à la ligne. Touchez 📷 pour ajouter une photo : elle sera montrée à la personne qui offre le cadeau.</p>
+      <input type="file" id="photo-fichier" accept="image/*" hidden>
       <form id="form-participant" class="ligne" autocomplete="off">
         <input type="text" id="nouveau" maxlength="40" placeholder="Prénom" aria-label="Prénom du participant">
         <button type="submit">Ajouter</button>
@@ -73,16 +102,23 @@
 
     <section class="carte" aria-labelledby="t-tirage">
       <h2 id="t-tirage">Tirage au sort</h2>
-      <p class="aide">Le tirage se fait uniquement sur cet appareil et n'est enregistré nulle part : chaque lien contient lui-même le nom du destinataire, sous forme codée. Avec son lien, chacun pourra aussi remplir sa liste de souhaits et échanger anonymement avec la personne qu'il gâte… et avec son propre Père Noël secret.</p>
+      <p class="aide">Le tirage se fait sur cet appareil. Il est enregistré chiffré : personne, pas même vous depuis le tableau de bord, ne voit qui offre à qui. Avec son lien, chacun pourra remplir sa liste de souhaits et échanger anonymement avec la personne qu'il gâte… et avec son propre Père Noël secret.</p>
+      <p id="avert-remplacement" class="avertissement" hidden>⚠️ Un nouveau tirage <strong>efface le tirage actuel</strong> : anciens liens, listes de souhaits, messages et notifications. Il faudra renvoyer les nouveaux liens à tout le monde.</p>
       <button type="button" id="tirer" class="principal">🎲 Lancer le tirage</button>
       <div id="message" role="status"></div>
+    </section>
+    </div>
 
-      <div id="bloc-resultats" hidden>
-        <p class="aide" style="margin-top:16px">Envoyez à chaque personne <strong>son</strong> lien. Vous-même ne voyez pas les résultats : n'ouvrez pas les liens des autres pour garder la surprise !</p>
-        <button type="button" id="tout-copier" class="discret petit">📋 Copier tous les liens</button>
-        <ul id="resultats" class="resultats"></ul>
-        <p class="avertissement">⚠️ Ces liens ne sont conservés nulle part. Envoyez-les avant de fermer la page. Si vous relancez le tirage, les anciens liens restent valables mais ne correspondent plus au nouveau tirage : n'envoyez que ceux d'un même tirage.</p>
+    <section class="carte" id="bloc-resultats" hidden>
+      <h2>Liens à envoyer</h2>
+      <div id="bloc-lien-admin" class="lien-admin" hidden>
+        <p><strong>🔑 Votre lien organisateur</strong> : gardez-le pour vous. Il donne accès au tableau de bord et permet de refaire un tirage.</p>
+        <div class="lien" id="lien-admin"></div>
+        <button type="button" id="copier-lien-admin-2" class="petit">📋 Copier mon lien organisateur</button>
       </div>
+      <p class="aide" style="margin-top:16px">Envoyez à chaque personne <strong>son</strong> lien. N'ouvrez pas les liens des autres pour garder la surprise ! Vous pourrez les recopier plus tard depuis le tableau de bord.</p>
+      <button type="button" id="tout-copier" class="discret petit">📋 Copier tous les liens</button>
+      <ul id="resultats" class="resultats"></ul>
     </section>
 
     <footer class="pied">
@@ -90,9 +126,9 @@
     </footer>
   </main>
 
-  <script src="assets/config.js?v=7"></script>
-  <script src="assets/commun.js?v=7"></script>
-  <script src="assets/api.js?v=7"></script>
-  <script src="assets/organisateur.js?v=7"></script>
+  <script src="assets/config.js?v=8"></script>
+  <script src="assets/commun.js?v=8"></script>
+  <script src="assets/api.js?v=8"></script>
+  <script src="assets/organisateur.js?v=8"></script>
 </body>
 </html>
