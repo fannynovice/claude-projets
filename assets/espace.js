@@ -324,8 +324,14 @@
     $("notif-test").addEventListener("click", async function () {
       const b = $("notif-test");
       b.disabled = true;
-      etat.textContent = "Test en cours…";
+      etat.textContent = "Test en cours… (environ 10 secondes)";
       const lignes = [];
+      const debut = new Date().toISOString();
+      try {
+        // S'assure que le téléphone utilise la dernière version du service worker.
+        const r0 = await navigator.serviceWorker.register("sw.js", { updateViaCache: "none" });
+        await r0.update().catch(function () {});
+      } catch (e) { /* ignore */ }
       try {
         const reg = await navigator.serviceWorker.ready;
         await reg.showNotification("🔔 Test local", { body: "L'affichage des notifications fonctionne.", icon: "assets/icone-192.png", tag: "ss-test-local" });
@@ -349,6 +355,20 @@
       } catch (e) {
         lignes.push("2) Envoi impossible : " + e.message);
       }
+      etat.textContent = lignes.join("\n") + "\n3) Attente de la réception…";
+      // Le service worker note chaque notification reçue dans un petit journal local.
+      let recu = null;
+      for (let i = 0; i < 10 && !recu; i++) {
+        await new Promise(function (ok) { setTimeout(ok, 1000); });
+        try {
+          const r = await (await caches.open("ss-journal")).match("dernier-push");
+          const j = r ? await r.json() : null;
+          if (j && j.quand >= debut) recu = j;
+        } catch (e) { /* ignore */ }
+      }
+      lignes.push(recu
+        ? "3) Reçue par le téléphone ✅ (lecture : " + recu.lecture + ", affichage : " + recu.affichage + ", v" + recu.version + ")"
+        : "3) Rien reçu par le téléphone en 10 s ❌");
       etat.textContent = lignes.join("\n");
       b.disabled = false;
     });
@@ -370,7 +390,7 @@
           etat.textContent = "Notifications refusées. Tu peux les autoriser plus tard dans les réglages du navigateur.";
           return;
         }
-        await navigator.serviceWorker.register("sw.js");
+        await navigator.serviceWorker.register("sw.js", { updateViaCache: "none" });
         const reg = await navigator.serviceWorker.ready;
         const clePublique = await Api.clePush();
         if (!clePublique) throw new Error("service de notifications pas encore prêt");
