@@ -489,3 +489,22 @@ footer.pied a { color: var(--or); }
   word-break: break-all; background: #fff; border: 1px dashed var(--bord); border-radius: 8px; padding: 6px 8px;
 }
 #bloc-resultats h2 { color: var(--rouge); }
+
+/* Photo de la page d'accueil */
+.photo-accueil {
+  margin: 0 auto 22px;
+  max-width: 440px;
+  padding: 8px;
+  background: var(--creme);
+  border-radius: calc(var(--rayon) + 4px);
+  box-shadow: var(--ombre);
+  border: 3px solid var(--or);
+  transform: rotate(-1deg);
+}
+.photo-accueil img {
+  display: block;
+  width: 100%;
+  height: auto;
+  border-radius: var(--rayon);
+}
+@media (prefers-reduced-motion: reduce) { .photo-accueil { transform: none; } }
