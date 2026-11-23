@@ -432,7 +432,6 @@ footer.pied a { color: var(--or); }
 }
 
 .carte.notif .etat { white-space: pre-line; }
-#notif-test { margin-top: 10px; }
 
 /* Photos */
 .vignette, .puce-photo {

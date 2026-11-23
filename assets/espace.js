@@ -304,7 +304,6 @@
     }
 
     function afficher(actif) {
-      $("notif-test").hidden = !actif;
       bouton.textContent = actif ? "Désactiver" : "Activer";
       bouton.classList.toggle("discret", actif);
       texte.textContent = actif
@@ -314,64 +313,15 @@
 
     let actif = memo(memoire) === "1" && Notification.permission === "granted" && !!(await abonnementActuel());
     afficher(actif);
-    if (actif) retenirLien();
+    if (actif) {
+      retenirLien();
+      // Garde le service worker à jour sur l'appareil (sans bruit).
+      navigator.serviceWorker.register("sw.js", { updateViaCache: "none" })
+        .then(function (r) { return r.update(); }).catch(function () {});
+    }
     if (Notification.permission === "denied") {
       etat.textContent = "Les notifications sont bloquées pour ce site dans les réglages de ton navigateur.";
     }
-
-    // Test en deux temps : affichage local (le téléphone sait-il afficher ?)
-    // puis envoi réel via le serveur (la chaîne complète fonctionne-t-elle ?).
-    $("notif-test").addEventListener("click", async function () {
-      const b = $("notif-test");
-      b.disabled = true;
-      etat.textContent = "Test en cours… (environ 10 secondes)";
-      const lignes = [];
-      const debut = new Date().toISOString();
-      try {
-        // S'assure que le téléphone utilise la dernière version du service worker.
-        const r0 = await navigator.serviceWorker.register("sw.js", { updateViaCache: "none" });
-        await r0.update().catch(function () {});
-      } catch (e) { /* ignore */ }
-      try {
-        const reg = await navigator.serviceWorker.ready;
-        await reg.showNotification("🔔 Test local", { body: "L'affichage des notifications fonctionne.", icon: "assets/icone-192.png", tag: "ss-test-local" });
-        lignes.push("1) Notification locale affichée ✅");
-      } catch (e) {
-        lignes.push("1) Notification locale impossible : " + e.message);
-      }
-      try {
-        const sub = await abonnementActuel();
-        if (!sub) throw new Error("pas d'abonnement sur cet appareil");
-        const cfg = window.SECRET_SANTA_CONFIG;
-        const r = await fetch(cfg.supabaseUrl.replace(/\/+$/, "") + "/functions/v1/notifier", {
-          method: "POST",
-          headers: { "Content-Type": "application/json", "apikey": cfg.supabaseKey },
-          body: JSON.stringify({ type: "test", endpoint: sub.endpoint, cle: cle })
-        });
-        const rep = await r.json().catch(function () { return {}; });
-        lignes.push(rep.ok
-          ? "2) Envoi par le serveur accepté ✅ (la notification « Test Secret Santa » doit arriver)"
-          : "2) Envoi refusé : " + (rep.erreur || ("code " + (rep.statut || r.status))) + (rep.detail ? " – " + rep.detail : ""));
-      } catch (e) {
-        lignes.push("2) Envoi impossible : " + e.message);
-      }
-      etat.textContent = lignes.join("\n") + "\n3) Attente de la réception…";
-      // Le service worker note chaque notification reçue dans un petit journal local.
-      let recu = null;
-      for (let i = 0; i < 10 && !recu; i++) {
-        await new Promise(function (ok) { setTimeout(ok, 1000); });
-        try {
-          const r = await (await caches.open("ss-journal")).match("dernier-push");
-          const j = r ? await r.json() : null;
-          if (j && j.quand >= debut) recu = j;
-        } catch (e) { /* ignore */ }
-      }
-      lignes.push(recu
-        ? "3) Reçue par le téléphone ✅ (lecture : " + recu.lecture + ", affichage : " + recu.affichage + ", v" + recu.version + ")"
-        : "3) Rien reçu par le téléphone en 10 s ❌");
-      etat.textContent = lignes.join("\n");
-      b.disabled = false;
-    });
 
     bouton.addEventListener("click", async function () {
       bouton.disabled = true;
